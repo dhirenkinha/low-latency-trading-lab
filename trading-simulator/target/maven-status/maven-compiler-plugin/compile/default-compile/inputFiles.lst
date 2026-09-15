@@ -3,6 +3,7 @@
 /Users/dhirenkinha/Desktop/low-latency-repos/low-latency-trading-lab/trading-simulator/src/main/java/com/lowlatencylab/sim/engine/MatchingEngine.java
 /Users/dhirenkinha/Desktop/low-latency-repos/low-latency-trading-lab/trading-simulator/src/main/java/com/lowlatencylab/sim/engine/SubmissionResult.java
 /Users/dhirenkinha/Desktop/low-latency-repos/low-latency-trading-lab/trading-simulator/src/main/java/com/lowlatencylab/sim/model/Order.java
+/Users/dhirenkinha/Desktop/low-latency-repos/low-latency-trading-lab/trading-simulator/src/main/java/com/lowlatencylab/sim/model/OrderStatus.java
 /Users/dhirenkinha/Desktop/low-latency-repos/low-latency-trading-lab/trading-simulator/src/main/java/com/lowlatencylab/sim/model/OrderType.java
 /Users/dhirenkinha/Desktop/low-latency-repos/low-latency-trading-lab/trading-simulator/src/main/java/com/lowlatencylab/sim/model/Side.java
 /Users/dhirenkinha/Desktop/low-latency-repos/low-latency-trading-lab/trading-simulator/src/main/java/com/lowlatencylab/sim/model/Trade.java

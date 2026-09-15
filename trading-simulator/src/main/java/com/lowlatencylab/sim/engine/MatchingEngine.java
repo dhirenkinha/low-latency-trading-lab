@@ -2,6 +2,7 @@ package com.lowlatencylab.sim.engine;
 
 import com.lowlatencylab.sim.book.OrderBook;
 import com.lowlatencylab.sim.model.Order;
+import com.lowlatencylab.sim.model.OrderStatus;
 import com.lowlatencylab.sim.model.OrderType;
 import com.lowlatencylab.sim.model.Side;
 import com.lowlatencylab.sim.model.Trade;
@@ -12,6 +13,8 @@ import java.util.Deque;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalLong;
 
 public final class MatchingEngine {
     private final OrderBook orderBook = new OrderBook();
@@ -22,7 +25,50 @@ public final class MatchingEngine {
         this.riskManager = riskManager;
     }
 
+    public OptionalLong bestBid() {
+        return orderBook.bestBid();
+    }
+
+    public OptionalLong bestAsk() {
+        return orderBook.bestAsk();
+    }
+
+    public Optional<Order> findOrderById(long orderId) {
+        return orderBook.findOrderById(orderId);
+    }
+
+    public boolean cancelOrder(long orderId) {
+        return orderBook.cancelOrder(orderId);
+    }
+
+    public Optional<Order> modifyOrder(long orderId, long newPrice, int newQty) {
+        Optional<Order> modified = orderBook.modifyOrder(orderId, newPrice, newQty);
+        if (modified.isPresent()) {
+            modified.get().setStatus(OrderStatus.RESTING);
+        }
+        return modified;
+    }
+
     public SubmissionResult submit(Order incoming) {
+        if (incoming == null) {
+            return SubmissionResult.rejected("incoming order is null");
+        }
+        if (incoming.symbol() == null || incoming.symbol().isBlank()) {
+            return SubmissionResult.rejected("symbol is required");
+        }
+        if (incoming.side() == null) {
+            return SubmissionResult.rejected("side is required");
+        }
+        if (incoming.type() == null) {
+            return SubmissionResult.rejected("order type is required");
+        }
+        if (incoming.remainingQty() <= 0) {
+            return SubmissionResult.rejected("quantity must be > 0");
+        }
+        if (incoming.type() == OrderType.LIMIT && incoming.price() <= 0) {
+            return SubmissionResult.rejected("limit price must be > 0");
+        }
+
         int requestedDelta = incoming.side() == Side.BUY ? incoming.remainingQty() : -incoming.remainingQty();
         int currentPosition = positions.getOrDefault(incoming.owner(), 0);
         if (!riskManager.canAccept(currentPosition, requestedDelta)) {
@@ -58,6 +104,7 @@ public final class MatchingEngine {
 
         boolean restingAdded = false;
         if (!incoming.isFilled() && incoming.type() == OrderType.LIMIT) {
+            incoming.setStatus(OrderStatus.RESTING);
             orderBook.addResting(incoming);
             restingAdded = true;
         }

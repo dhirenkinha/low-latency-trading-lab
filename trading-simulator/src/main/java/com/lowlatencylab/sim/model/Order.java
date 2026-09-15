@@ -6,9 +6,10 @@ public final class Order {
     private final String owner;
     private final Side side;
     private final OrderType type;
-    private final long price;
+    private long price;
     private final long timestampNanos;
     private int remainingQty;
+    private OrderStatus status;
 
     public Order(long id, String symbol, String owner, Side side, OrderType type, long price, int quantity, long timestampNanos) {
         if (quantity <= 0) {
@@ -25,6 +26,7 @@ public final class Order {
         this.price = price;
         this.remainingQty = quantity;
         this.timestampNanos = timestampNanos;
+        this.status = OrderStatus.NEW;
     }
 
     public long id() {
@@ -59,8 +61,23 @@ public final class Order {
         return timestampNanos;
     }
 
+    public OrderStatus status() {
+        return status;
+    }
+
+    public void setStatus(OrderStatus status) {
+        if (status == null) {
+            throw new IllegalArgumentException("status cannot be null");
+        }
+        this.status = status;
+    }
+
     public boolean isFilled() {
         return remainingQty == 0;
+    }
+
+    public boolean isOpen() {
+        return status != OrderStatus.FILLED && status != OrderStatus.CANCELLED;
     }
 
     public void reduce(int tradedQty) {
@@ -68,6 +85,26 @@ public final class Order {
             throw new IllegalArgumentException("invalid tradedQty: " + tradedQty);
         }
         remainingQty -= tradedQty;
+        if (remainingQty == 0) {
+            status = OrderStatus.FILLED;
+        } else {
+            status = OrderStatus.PARTIALLY_FILLED;
+        }
+    }
+
+    public void modify(long newPrice, int newQty) {
+        if (type == OrderType.MARKET) {
+            throw new IllegalStateException("market orders cannot be modified");
+        }
+        if (newPrice <= 0) {
+            throw new IllegalArgumentException("modified price must be > 0");
+        }
+        if (newQty <= 0) {
+            throw new IllegalArgumentException("modified quantity must be > 0");
+        }
+        this.price = newPrice;
+        this.remainingQty = newQty;
+        this.status = OrderStatus.RESTING;
     }
 
     @Override
@@ -79,6 +116,7 @@ public final class Order {
             ", type=" + type +
             ", price=" + price +
             ", remainingQty=" + remainingQty +
+            ", status=" + status +
             '}';
     }
 }
