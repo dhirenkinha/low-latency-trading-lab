@@ -17,36 +17,95 @@ import java.util.Optional;
 import java.util.OptionalLong;
 
 public final class MatchingEngine {
-    private final OrderBook orderBook = new OrderBook();
+    private final Map<String, OrderBook> books = new HashMap<>();
     private final RiskManager riskManager;
     private final Map<String, Integer> positions = new HashMap<>();
+    private final Map<String, Map<String, Integer>> positionsByOwnerAndSymbol = new HashMap<>();
+    private long globalSequenceNumber = 0;
 
     public MatchingEngine(RiskManager riskManager) {
         this.riskManager = riskManager;
     }
 
     public OptionalLong bestBid() {
-        return orderBook.bestBid();
+        return books.values().stream()
+            .map(OrderBook::bestBid)
+            .filter(OptionalLong::isPresent)
+            .mapToLong(OptionalLong::getAsLong)
+            .max();
     }
 
     public OptionalLong bestAsk() {
-        return orderBook.bestAsk();
+        return books.values().stream()
+            .map(OrderBook::bestAsk)
+            .filter(OptionalLong::isPresent)
+            .mapToLong(OptionalLong::getAsLong)
+            .min();
+    }
+
+    public OptionalLong bestBid(String symbol) {
+        return bookFor(symbol).bestBid();
+    }
+
+    public OptionalLong bestAsk(String symbol) {
+        return bookFor(symbol).bestAsk();
     }
 
     public Optional<Order> findOrderById(long orderId) {
-        return orderBook.findOrderById(orderId);
+        for (OrderBook book : books.values()) {
+            Optional<Order> order = book.findOrderById(orderId);
+            if (order.isPresent()) {
+                return order;
+            }
+        }
+        return Optional.empty();
+    }
+
+    public Optional<Order> findOrderById(String symbol, long orderId) {
+        return bookFor(symbol).findOrderById(orderId);
+    }
+
+    public Optional<Order> findOrderByOwner(String symbol, String owner, long orderId) {
+        return bookFor(symbol).findOrderById(owner, orderId);
     }
 
     public boolean cancelOrder(long orderId) {
-        return orderBook.cancelOrder(orderId);
+        for (OrderBook book : books.values()) {
+            if (book.cancelOrder(orderId)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean cancelOrder(String symbol, long orderId) {
+        return bookFor(symbol).cancelOrder(orderId);
+    }
+
+    public boolean cancelOrder(String symbol, String owner, long orderId) {
+        return bookFor(symbol).cancelOrder(owner, orderId);
     }
 
     public Optional<Order> modifyOrder(long orderId, long newPrice, int newQty) {
-        Optional<Order> modified = orderBook.modifyOrder(orderId, newPrice, newQty);
-        if (modified.isPresent()) {
-            modified.get().setStatus(OrderStatus.RESTING);
+        for (Map.Entry<String, OrderBook> entry : books.entrySet()) {
+            Optional<Order> modified = entry.getValue().modifyOrder(orderId, newPrice, newQty);
+            if (modified.isPresent()) {
+                return modified;
+            }
         }
-        return modified;
+        return Optional.empty();
+    }
+
+    public Optional<Order> modifyOrder(String symbol, long orderId, long newPrice, int newQty) {
+        return bookFor(symbol).modifyOrder(orderId, newPrice, newQty);
+    }
+
+    public Optional<Order> modifyOrder(String symbol, String owner, long orderId, long newPrice, int newQty) {
+        Optional<Order> target = findOrderByOwner(symbol, owner, orderId);
+        if (target.isEmpty()) {
+            return Optional.empty();
+        }
+        return bookFor(symbol).modifyOrder(owner, orderId, newPrice, newQty);
     }
 
     public SubmissionResult submit(Order incoming) {
@@ -69,8 +128,12 @@ public final class MatchingEngine {
             return SubmissionResult.rejected("limit price must be > 0");
         }
 
+        // Assign global sequence number for price-time priority
+        long incomingSeq = globalSequenceNumber++;
+
+        OrderBook book = bookFor(incoming.symbol());
         int requestedDelta = incoming.side() == Side.BUY ? incoming.remainingQty() : -incoming.remainingQty();
-        int currentPosition = positions.getOrDefault(incoming.owner(), 0);
+        int currentPosition = currentPositionForOwnerAndSymbol(incoming.owner(), incoming.symbol());
         if (!riskManager.canAccept(currentPosition, requestedDelta)) {
             return SubmissionResult.rejected(
                 "Risk reject for " + incoming.owner() + ": projected position would breach +/-" + riskManager.maxAbsolutePosition()
@@ -78,9 +141,9 @@ public final class MatchingEngine {
         }
 
         List<Trade> trades = new ArrayList<>();
-        while (!incoming.isFilled() && canCross(incoming)) {
+        while (!incoming.isFilled() && canCross(incoming, book)) {
             Side restingSide = incoming.side().opposite();
-            Deque<Order> levelQueue = orderBook.bestLevel(restingSide);
+            Deque<Order> levelQueue = book.bestLevel(restingSide);
             if (levelQueue == null || levelQueue.isEmpty()) {
                 break;
             }
@@ -98,14 +161,14 @@ public final class MatchingEngine {
 
             if (resting.isFilled()) {
                 levelQueue.removeFirst();
-                orderBook.removeBestLevelIfEmpty(restingSide);
+                book.removeBestLevelIfEmpty(restingSide);
             }
         }
 
         boolean restingAdded = false;
         if (!incoming.isFilled() && incoming.type() == OrderType.LIMIT) {
             incoming.setStatus(OrderStatus.RESTING);
-            orderBook.addResting(incoming);
+            book.addResting(incoming);
             restingAdded = true;
         }
 
@@ -116,20 +179,43 @@ public final class MatchingEngine {
         return positions.getOrDefault(owner, 0);
     }
 
-    public String snapshot(int depth) {
-        return orderBook.snapshot(depth);
+    public int positionOf(String owner, String symbol) {
+        return positionsByOwnerAndSymbol
+            .getOrDefault(owner, Map.of())
+            .getOrDefault(symbol, 0);
     }
 
-    private boolean canCross(Order incoming) {
+    public String snapshot(int depth) {
+        StringBuilder sb = new StringBuilder();
+        if (books.isEmpty()) {
+            return "ORDER BOOK\n<empty>\n";
+        }
+        for (String symbol : books.keySet()) {
+            sb.append("=== ").append(symbol).append(" ===\n");
+            sb.append(books.get(symbol).snapshot(depth));
+            sb.append('\n');
+        }
+        return sb.toString();
+    }
+
+    public String snapshot(String symbol, int depth) {
+        return bookFor(symbol).snapshot(depth);
+    }
+
+    private OrderBook bookFor(String symbol) {
+        return books.computeIfAbsent(symbol, ignored -> new OrderBook());
+    }
+
+    private boolean canCross(Order incoming, OrderBook book) {
         if (incoming.side() == Side.BUY) {
-            var bestAsk = orderBook.bestAsk();
+            var bestAsk = book.bestAsk();
             if (bestAsk.isEmpty()) {
                 return false;
             }
             return incoming.type() == OrderType.MARKET || incoming.price() >= bestAsk.getAsLong();
         }
 
-        var bestBid = orderBook.bestBid();
+        var bestBid = book.bestBid();
         if (bestBid.isEmpty()) {
             return false;
         }
@@ -144,7 +230,20 @@ public final class MatchingEngine {
     }
 
     private void applyPositionChanges(Trade trade) {
+        updateOwnerPosition(trade.buyOwner(), trade.symbol(), trade.quantity());
+        updateOwnerPosition(trade.sellOwner(), trade.symbol(), -trade.quantity());
         positions.merge(trade.buyOwner(), trade.quantity(), Integer::sum);
         positions.merge(trade.sellOwner(), -trade.quantity(), Integer::sum);
+    }
+
+    private void updateOwnerPosition(String owner, String symbol, int delta) {
+        Map<String, Integer> symbolPositions = positionsByOwnerAndSymbol.computeIfAbsent(owner, ignored -> new HashMap<>());
+        symbolPositions.merge(symbol, delta, Integer::sum);
+    }
+
+    private int currentPositionForOwnerAndSymbol(String owner, String symbol) {
+        return positionsByOwnerAndSymbol
+            .getOrDefault(owner, Map.of())
+            .getOrDefault(symbol, 0);
     }
 }

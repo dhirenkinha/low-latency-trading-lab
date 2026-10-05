@@ -46,8 +46,25 @@ public final class OrderBook {
         return Optional.empty();
     }
 
+    public Optional<Order> findOrderById(String owner, long orderId) {
+        for (NavigableMap<Long, Deque<Order>> map : List.of(bids, asks)) {
+            for (Deque<Order> orders : map.values()) {
+                for (Order order : orders) {
+                    if (order.id() == orderId && order.owner().equals(owner)) {
+                        return Optional.of(order);
+                    }
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
     public boolean cancelOrder(long orderId) {
         return cancelOrderFromMap(bids, orderId) || cancelOrderFromMap(asks, orderId);
+    }
+
+    public boolean cancelOrder(String owner, long orderId) {
+        return cancelOrderFromMap(bids, owner, orderId) || cancelOrderFromMap(asks, owner, orderId);
     }
 
     public Optional<Order> cancelOrder(Side side, long orderId) {
@@ -68,8 +85,52 @@ public final class OrderBook {
         return Optional.empty();
     }
 
+    public Optional<Order> cancelOrder(Side side, String owner, long orderId) {
+        NavigableMap<Long, Deque<Order>> map = levelMap(side);
+        for (Map.Entry<Long, Deque<Order>> entry : map.entrySet()) {
+            Deque<Order> orders = entry.getValue();
+            Iterator<Order> iterator = orders.iterator();
+            while (iterator.hasNext()) {
+                Order order = iterator.next();
+                if (order.id() == orderId && order.owner().equals(owner)) {
+                    iterator.remove();
+                    order.setStatus(OrderStatus.CANCELLED);
+                    removeEmptyLevelIfNeeded(map, entry.getKey());
+                    return Optional.of(order);
+                }
+            }
+        }
+        return Optional.empty();
+    }
+
     public Optional<Order> modifyOrder(long orderId, long newPrice, int newQty) {
         Optional<Order> target = findOrderById(orderId);
+        if (target.isEmpty()) {
+            return Optional.empty();
+        }
+        Order order = target.get();
+        if (order.type() == OrderType.MARKET || !order.isOpen()) {
+            return Optional.empty();
+        }
+        if (newPrice <= 0 || newQty <= 0) {
+            return Optional.empty();
+        }
+
+        NavigableMap<Long, Deque<Order>> map = levelMap(order.side());
+        for (Map.Entry<Long, Deque<Order>> entry : map.entrySet()) {
+            Deque<Order> orders = entry.getValue();
+            if (orders.remove(order)) {
+                removeEmptyLevelIfNeeded(map, entry.getKey());
+                order.modify(newPrice, newQty);
+                addResting(order);
+                return Optional.of(order);
+            }
+        }
+        return Optional.empty();
+    }
+
+    public Optional<Order> modifyOrder(String owner, long orderId, long newPrice, int newQty) {
+        Optional<Order> target = findOrderById(owner, orderId);
         if (target.isEmpty()) {
             return Optional.empty();
         }
@@ -175,6 +236,23 @@ public final class OrderBook {
             while (iterator.hasNext()) {
                 Order order = iterator.next();
                 if (order.id() == orderId) {
+                    iterator.remove();
+                    order.setStatus(OrderStatus.CANCELLED);
+                    removeEmptyLevelIfNeeded(map, entry.getKey());
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private boolean cancelOrderFromMap(NavigableMap<Long, Deque<Order>> map, String owner, long orderId) {
+        for (Map.Entry<Long, Deque<Order>> entry : map.entrySet()) {
+            Deque<Order> orders = entry.getValue();
+            Iterator<Order> iterator = orders.iterator();
+            while (iterator.hasNext()) {
+                Order order = iterator.next();
+                if (order.id() == orderId && order.owner().equals(owner)) {
                     iterator.remove();
                     order.setStatus(OrderStatus.CANCELLED);
                     removeEmptyLevelIfNeeded(map, entry.getKey());

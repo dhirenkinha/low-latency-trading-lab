@@ -1,6 +1,6 @@
 package com.lowlatencylab.sim.model;
 
-public final class Order {
+public final class Order implements Comparable<Order> {
     private final long id;
     private final String symbol;
     private final String owner;
@@ -8,10 +8,15 @@ public final class Order {
     private final OrderType type;
     private long price;
     private final long timestampNanos;
+    private final long sequenceNumber;
     private int remainingQty;
     private OrderStatus status;
 
     public Order(long id, String symbol, String owner, Side side, OrderType type, long price, int quantity, long timestampNanos) {
+        this(id, symbol, owner, side, type, price, quantity, timestampNanos, System.nanoTime());
+    }
+
+    public Order(long id, String symbol, String owner, Side side, OrderType type, long price, int quantity, long timestampNanos, long sequenceNumber) {
         if (quantity <= 0) {
             throw new IllegalArgumentException("quantity must be > 0");
         }
@@ -26,6 +31,7 @@ public final class Order {
         this.price = price;
         this.remainingQty = quantity;
         this.timestampNanos = timestampNanos;
+        this.sequenceNumber = sequenceNumber;
         this.status = OrderStatus.NEW;
     }
 
@@ -59,6 +65,10 @@ public final class Order {
 
     public long timestampNanos() {
         return timestampNanos;
+    }
+
+    public long sequenceNumber() {
+        return sequenceNumber;
     }
 
     public OrderStatus status() {
@@ -108,6 +118,17 @@ public final class Order {
     }
 
     @Override
+    public int compareTo(Order other) {
+        if (this.sequenceNumber < other.sequenceNumber) {
+            return -1;
+        }
+        if (this.sequenceNumber > other.sequenceNumber) {
+            return 1;
+        }
+        return 0;
+    }
+
+    @Override
     public String toString() {
         return "Order{" +
             "id=" + id +
@@ -117,6 +138,7 @@ public final class Order {
             ", price=" + price +
             ", remainingQty=" + remainingQty +
             ", status=" + status +
+            ", seq=" + sequenceNumber +
             '}';
     }
 }
