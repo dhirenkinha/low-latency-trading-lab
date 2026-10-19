@@ -10,5 +10,10 @@ Start here:
 
 ```bash
 cd trading-simulator
+mvn test
 mvn -q compile exec:java
 ```
+
+The simulator currently supports multiple symbols, price-time matching, order
+cancellation and modification, position tracking, risk checks, and automated
+JUnit tests.

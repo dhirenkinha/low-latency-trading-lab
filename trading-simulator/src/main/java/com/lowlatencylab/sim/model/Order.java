@@ -112,6 +112,9 @@ public final class Order implements Comparable<Order> {
         if (newQty <= 0) {
             throw new IllegalArgumentException("modified quantity must be > 0");
         }
+        if (newQty > remainingQty) {
+            throw new IllegalArgumentException("modified quantity cannot increase remaining quantity");
+        }
         this.price = newPrice;
         this.remainingQty = newQty;
         this.status = OrderStatus.RESTING;

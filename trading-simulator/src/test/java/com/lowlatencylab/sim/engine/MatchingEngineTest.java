@@ -110,6 +110,59 @@ class MatchingEngineTest {
         assertFalse(engine.snapshot(SYMBOL, 5).contains("price=100"));
     }
 
+    // A modified order loses priority, even when its price stays unchanged.
+    @Test
+    void modificationLosesTimePriority() {
+        MatchingEngine engine = new MatchingEngine(new RiskManager(100));
+        Order first = order(1, "FIRST", Side.BUY, OrderType.LIMIT, 100, 5);
+        engine.submit(first);
+        engine.submit(order(2, "SECOND", Side.BUY, OrderType.LIMIT, 100, 5));
+
+        assertTrue(engine.modifyOrder(SYMBOL, "FIRST", first.id(), 100, 5).isPresent());
+        SubmissionResult result = engine.submit(order(3, "SELLER", Side.SELL, OrderType.MARKET, 0, 1));
+
+        assertEquals("SECOND", result.trades().get(0).buyOwner());
+    }
+
+    // Modifications may reduce remaining quantity but cannot increase it.
+    @Test
+    void modificationCannotIncreaseRemainingQuantity() {
+        MatchingEngine engine = new MatchingEngine(new RiskManager(100));
+        Order order = order(1, "OWNER", Side.BUY, OrderType.LIMIT, 100, 5);
+        engine.submit(order);
+
+        assertTrue(engine.modifyOrder(SYMBOL, "OWNER", order.id(), 105, 3).isPresent());
+        assertFalse(engine.modifyOrder(SYMBOL, "OWNER", order.id(), 105, 4).isPresent());
+        assertEquals(3, order.remainingQty());
+    }
+
+    // A partial fill may be reduced or cancelled, but already traded quantity cannot return.
+    @Test
+    void partiallyFilledOrderCanOnlyModifyRemainingQuantity() {
+        MatchingEngine engine = new MatchingEngine(new RiskManager(100));
+        Order restingSell = order(1, "SELLER", Side.SELL, OrderType.LIMIT, 101, 10);
+        engine.submit(restingSell);
+        engine.submit(order(2, "BUYER", Side.BUY, OrderType.MARKET, 0, 4));
+
+        assertEquals(OrderStatus.PARTIALLY_FILLED, restingSell.status());
+        assertEquals(6, restingSell.remainingQty());
+        assertTrue(engine.modifyOrder(SYMBOL, "SELLER", restingSell.id(), 102, 3).isPresent());
+        assertEquals(3, restingSell.remainingQty());
+        assertFalse(engine.modifyOrder(SYMBOL, "SELLER", restingSell.id(), 102, 7).isPresent());
+    }
+
+    // Orders that are fully filled are closed and cannot be modified.
+    @Test
+    void filledOrderCannotBeModified() {
+        MatchingEngine engine = new MatchingEngine(new RiskManager(100));
+        Order restingSell = order(1, "SELLER", Side.SELL, OrderType.LIMIT, 101, 2);
+        engine.submit(restingSell);
+        engine.submit(order(2, "BUYER", Side.BUY, OrderType.MARKET, 0, 2));
+
+        assertEquals(OrderStatus.FILLED, restingSell.status());
+        assertFalse(engine.modifyOrder(SYMBOL, "SELLER", restingSell.id(), 102, 1).isPresent());
+    }
+
     // Orders for different symbols must use separate books and positions.
     @Test
     void symbolsUseIndependentBooksAndPositions() {

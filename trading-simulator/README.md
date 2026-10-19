@@ -53,6 +53,17 @@ The automated tests cover:
 - Risk rejection
 - Invalid submissions
 
+## Cancel/Replace Semantics
+
+The simulator treats modification as cancel/replace:
+
+- Only open limit orders may be modified.
+- The new quantity means remaining quantity and must be positive.
+- Remaining quantity may be reduced, but not increased.
+- A price or quantity change removes and reinserts the order, so it loses time priority.
+- Filled and cancelled orders cannot be modified.
+- A partially filled order may be modified or cancelled; executed quantity is never restored.
+
 ## Next Milestones
 
 1. Add latency measurements for submit and match paths.

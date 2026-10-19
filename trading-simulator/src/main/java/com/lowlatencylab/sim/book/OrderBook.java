@@ -112,7 +112,7 @@ public final class OrderBook {
         if (order.type() == OrderType.MARKET || !order.isOpen()) {
             return Optional.empty();
         }
-        if (newPrice <= 0 || newQty <= 0) {
+        if (newPrice <= 0 || newQty <= 0 || newQty > order.remainingQty()) {
             return Optional.empty();
         }
 
@@ -138,7 +138,7 @@ public final class OrderBook {
         if (order.type() == OrderType.MARKET || !order.isOpen()) {
             return Optional.empty();
         }
-        if (newPrice <= 0 || newQty <= 0) {
+        if (newPrice <= 0 || newQty <= 0 || newQty > order.remainingQty()) {
             return Optional.empty();
         }
 

@@ -107,10 +107,12 @@ Meaning:
 ## 6) Order Lifecycle Operations
 
 Resting limit orders can be cancelled or modified. Cancellation marks the
-order as `CANCELLED` and removes it from the book. Modification removes the
-old resting order, updates its price and quantity, and reinserts it with new
-time priority. Ownership checks prevent another participant from changing the
-order.
+order as `CANCELLED` and removes its remaining quantity from the book.
+Modification acts as cancel/replace: it changes the remaining quantity, may
+reduce but not increase it, and reinserts the order with new time priority.
+Filled and cancelled orders cannot be modified. A partially filled order may
+be modified or cancelled, but executed quantity is never restored. Ownership
+checks prevent another participant from changing the order.
 
 ## 7) Code Mapping
 
