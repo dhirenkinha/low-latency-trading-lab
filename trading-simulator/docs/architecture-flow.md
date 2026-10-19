@@ -18,12 +18,29 @@ flowchart LR
 Meaning:
 
 - A trader or strategy sends an order.
+- The matching engine validates the order and selects the book for its symbol.
 - Risk checks run before matching.
 - If accepted, the matching engine tries to trade it.
-- If it does not fully trade, remaining quantity can rest in the order book.
-- Any executed trade updates positions.
+- If it does not fully trade, remaining limit quantity can rest in the order book.
+- Market orders never rest when liquidity is unavailable.
+- Any executed trade updates positions for both owners.
 
-## 2) Order Book Structure
+## 2) Symbol-to-Book Mapping
+
+The matching engine maintains one `OrderBook` per symbol:
+
+```mermaid
+flowchart LR
+    E[Matching Engine] --> FOO[FOO OrderBook]
+    E --> BAR[BAR OrderBook]
+    FOO --> FOOA[FOO bids and asks]
+    BAR --> BARA[BAR bids and asks]
+```
+
+Orders only match with orders for the same symbol. Positions are also tracked
+per owner and symbol.
+
+## 3) Order Book Structure
 
 ```mermaid
 flowchart TB
@@ -41,7 +58,7 @@ Meaning:
 - The best bid is the highest buy price.
 - The best ask is the lowest sell price.
 
-## 3) Matching Flow For An Incoming Buy
+## 4) Matching Flow For An Incoming Buy
 
 ```mermaid
 flowchart TD
@@ -65,7 +82,7 @@ Meaning:
 - If the buy order is aggressive enough, it consumes liquidity.
 - If it still has quantity left and it is a limit order, it rests in the book.
 
-## 4) Market Maker vs Taker
+## 5) Market Maker vs Taker
 
 ```mermaid
 sequenceDiagram
@@ -87,10 +104,21 @@ Meaning:
 - The taker trades at the current best available price.
 - The maker earns the spread only if it can buy lower and sell higher over time.
 
-## 5) Code Mapping
+## 6) Order Lifecycle Operations
+
+Resting limit orders can be cancelled or modified. Cancellation marks the
+order as `CANCELLED` and removes it from the book. Modification removes the
+old resting order, updates its price and quantity, and reinserts it with new
+time priority. Ownership checks prevent another participant from changing the
+order.
+
+## 7) Code Mapping
 
 - Order creation and demo flow: `src/main/java/com/lowlatencylab/sim/Main.java`
 - Risk checks: `src/main/java/com/lowlatencylab/sim/risk/RiskManager.java`
-- Matching logic: `src/main/java/com/lowlatencylab/sim/engine/MatchingEngine.java`
-- Book state: `src/main/java/com/lowlatencylab/sim/book/OrderBook.java`
+- Matching logic and symbol routing: `src/main/java/com/lowlatencylab/sim/engine/MatchingEngine.java`
+- Per-symbol book state: `src/main/java/com/lowlatencylab/sim/book/OrderBook.java`
+- Trade records: `src/main/java/com/lowlatencylab/sim/model/Trade.java`
+- Submission outcomes: `src/main/java/com/lowlatencylab/sim/engine/SubmissionResult.java`
 - Market-maker quotes: `src/main/java/com/lowlatencylab/sim/strategy/NaiveMarketMakerStrategy.java`
+- Automated behavior tests: `src/test/java/com/lowlatencylab/sim/engine/MatchingEngineTest.java`

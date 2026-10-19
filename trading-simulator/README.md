@@ -9,16 +9,24 @@ This project is the first step in your HFT learning path:
 
 ## Run
 
+From the repository root:
+
 ```bash
 cd trading-simulator
+mvn test
 mvn -q compile exec:java
 ```
 
+`mvn test` runs the automated matching-engine tests before the demo.
+
 ## What This Simulator Includes
 
-- One-symbol order book with bids and asks
+- Multiple symbols, each with an independent order book
 - Price-time priority matching engine
 - Support for `LIMIT` and `MARKET` orders
+- Partial fills across multiple price levels
+- Order cancellation and modification with ownership checks
+- Position tracking per owner and symbol
 - Basic risk manager (`max absolute position`)
 - Very simple market-making strategy example
 
@@ -26,13 +34,29 @@ mvn -q compile exec:java
 
 - Trading basics: `docs/trading-basics.md`
 - Architecture flow diagrams: `docs/architecture-flow.md`
-- Entry point: `src/main/java/com/lowlatencylab/sim/Main.java`
+- Entry point and executable scenarios: `src/main/java/com/lowlatencylab/sim/Main.java`
 - Matching logic: `src/main/java/com/lowlatencylab/sim/engine/MatchingEngine.java`
-- Order book: `src/main/java/com/lowlatencylab/sim/book/OrderBook.java`
+- Per-symbol order books: `src/main/java/com/lowlatencylab/sim/book/OrderBook.java`
+- Automated matching tests: `src/test/java/com/lowlatencylab/sim/engine/MatchingEngineTest.java`
+
+## Current Test Coverage
+
+The automated tests cover:
+
+- Resting limit orders
+- Market-order execution
+- Price priority and FIFO ordering
+- Partial fills
+- Cancellation and owner validation
+- Order modification
+- Symbol isolation
+- Risk rejection
+- Invalid submissions
 
 ## Next Milestones
 
-1. Add cancel/replace order support.
-2. Add latency measurements for submit and match path.
-3. Add replay mode from CSV market events.
-4. Move matching hot path to C++.
+1. Add latency measurements for submit and match paths.
+2. Add replay mode from CSV market events.
+3. Expand strategy behavior with inventory-aware quoting.
+4. Profile the Java implementation and identify hot paths.
+5. Move only measured matching hot paths to C++.
