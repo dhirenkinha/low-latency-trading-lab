@@ -25,6 +25,11 @@ public final class Main {
 
         System.out.println(engine.snapshot(5));
 
+
+
+        // --- --- --- ---
+
+
         System.out.println("=== STEP 1A: FIFO within the same price level ===");
         MatchingEngine fifoEngine = new MatchingEngine(new RiskManager(100));
         Order fifoBuy1 = new Order(idGen.incrementAndGet(), SYMBOL_FOO, "FIFO_BUY_1", Side.BUY, OrderType.LIMIT, 100, 5, System.nanoTime());
@@ -39,12 +44,22 @@ public final class Main {
         System.out.println("FIFO_BUY_2=" + fifoEngine.positionOf("FIFO_BUY_2", SYMBOL_FOO));
         System.out.println("FIFO_SELL_1=" + fifoEngine.positionOf("FIFO_SELL_1", SYMBOL_FOO));
 
+
+
+        // --- --- --- ---
+
+
         System.out.println("=== STEP 1B: Cancel resting order and clean empty level ===");
         MatchingEngine cancelEngine = new MatchingEngine(new RiskManager(100));
         Order restingBuy = new Order(idGen.incrementAndGet(), SYMBOL_FOO, "CANCEL_BUY", Side.BUY, OrderType.LIMIT, 105, 4, System.nanoTime());
         printResult("CANCEL_BUY limit buy", cancelEngine.submit(restingBuy));
         System.out.println("cancel success=" + cancelEngine.cancelOrder(SYMBOL_FOO, restingBuy.id()));
         System.out.println(cancelEngine.snapshot(SYMBOL_FOO, 5));
+
+
+        // --- --- --- ---
+
+
 
         System.out.println("=== STEP 1C: Partial fill across multiple resting levels ===");
         MatchingEngine multiLevelEngine = new MatchingEngine(new RiskManager(100));
@@ -56,6 +71,9 @@ public final class Main {
         printResult("BUYER_1 market buy 7", multiLevelEngine.submit(buyLarge));
         System.out.println(multiLevelEngine.snapshot(SYMBOL_FOO, 5));
 
+
+        // --- --- --- ---
+
         System.out.println("=== STEP 1D: Modify a resting order ===");
         MatchingEngine modifyEngine = new MatchingEngine(new RiskManager(100));
         Order modifyOrder = new Order(idGen.incrementAndGet(), SYMBOL_FOO, "MOD_BUY", Side.BUY, OrderType.LIMIT, 104, 4, System.nanoTime());
@@ -64,6 +82,12 @@ public final class Main {
             .map(order -> "updated " + order.id() + " -> price=" + order.price() + ", qty=" + order.remainingQty())
             .orElse("not found"));
         System.out.println(modifyEngine.snapshot(SYMBOL_FOO, 5));
+
+
+
+        // --- --- --- ---
+
+
 
         System.out.println("=== STEP 1E: Different symbols do not interfere ===");
         MatchingEngine multiSymbolEngine = new MatchingEngine(new RiskManager(100));
@@ -74,6 +98,11 @@ public final class Main {
         System.out.println(multiSymbolEngine.snapshot(5));
         System.out.println("MULTI_BUY FOO=" + multiSymbolEngine.positionOf("MULTI_BUY", SYMBOL_FOO));
         System.out.println("MULTI_BUY BAR=" + multiSymbolEngine.positionOf("MULTI_BUY", SYMBOL_BAR));
+
+
+
+        // --- --- --- ---
+
 
         System.out.println("=== STEP 1F: Invalid order and wrong-owner cancel checks ===");
         MatchingEngine invalidEngine = new MatchingEngine(new RiskManager(100));
@@ -86,6 +115,10 @@ public final class Main {
         Order blankSymbolOrder = new Order(idGen.incrementAndGet(), "   ", "BAD_OWNER", Side.BUY, OrderType.LIMIT, 110, 3, System.nanoTime());
         printResult("blank symbol order", invalidEngine.submit(blankSymbolOrder));
         printResult("null order", invalidEngine.submit(null));
+
+
+        // --- --- --- ---
+
 
         System.out.println("=== STEP 1G: Price-time priority (FIFO strict ordering) ===");
         MatchingEngine priceTimePriorityEngine = new MatchingEngine(new RiskManager(100));
@@ -103,6 +136,10 @@ public final class Main {
         System.out.println("PTP_BUY_2=" + priceTimePriorityEngine.positionOf("PTP_BUY_2", SYMBOL_FOO));
         System.out.println("PTP_BUY_3=" + priceTimePriorityEngine.positionOf("PTP_BUY_3", SYMBOL_FOO));
 
+
+        // --- --- --- ---
+
+
         System.out.println("=== STEP 2: Aggressive buy crosses ask ===");
         Order aggressiveBuy = new Order(
             idGen.incrementAndGet(), SYMBOL_FOO, "TAKER_A", Side.BUY, OrderType.MARKET, 0, 6, System.nanoTime()
@@ -110,12 +147,23 @@ public final class Main {
         printResult("TAKER_A market buy", engine.submit(aggressiveBuy));
         System.out.println(engine.snapshot(SYMBOL_FOO, 5));
 
+
+        // --- --- --- ---
+
+
         System.out.println("=== STEP 3: Aggressive sell crosses bid ===");
         Order aggressiveSell = new Order(
             idGen.incrementAndGet(), SYMBOL_FOO, "TAKER_B", Side.SELL, OrderType.MARKET, 0, 4, System.nanoTime()
         );
         printResult("TAKER_B market sell", engine.submit(aggressiveSell));
         System.out.println(engine.snapshot(SYMBOL_FOO, 5));
+
+
+
+
+        // --- --- --- ---
+
+
 
         System.out.println("=== STEP 4: Risk reject example ===");
         Order tooLargeBuy = new Order(
