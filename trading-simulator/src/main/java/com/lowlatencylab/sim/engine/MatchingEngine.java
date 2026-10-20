@@ -19,12 +19,21 @@ import java.util.OptionalLong;
 public final class MatchingEngine {
     private final Map<String, OrderBook> books = new HashMap<>();
     private final RiskManager riskManager;
+    private final LatencyRecorder latencyRecorder;
     private final Map<String, Integer> positions = new HashMap<>();
     private final Map<String, Map<String, Integer>> positionsByOwnerAndSymbol = new HashMap<>();
-    private long globalSequenceNumber = 0;
 
     public MatchingEngine(RiskManager riskManager) {
+        this(riskManager, LatencyRecorder.disabled());
+    }
+
+    public MatchingEngine(RiskManager riskManager, LatencyRecorder latencyRecorder) {
         this.riskManager = riskManager;
+        this.latencyRecorder = latencyRecorder;
+    }
+
+    public LatencyRecorder latencyRecorder() {
+        return latencyRecorder;
     }
 
     public OptionalLong bestBid() {
@@ -109,70 +118,89 @@ public final class MatchingEngine {
     }
 
     public SubmissionResult submit(Order incoming) {
-        if (incoming == null) {
-            return SubmissionResult.rejected("incoming order is null");
-        }
-        if (incoming.symbol() == null || incoming.symbol().isBlank()) {
-            return SubmissionResult.rejected("symbol is required");
-        }
-        if (incoming.side() == null) {
-            return SubmissionResult.rejected("side is required");
-        }
-        if (incoming.type() == null) {
-            return SubmissionResult.rejected("order type is required");
-        }
-        if (incoming.remainingQty() <= 0) {
-            return SubmissionResult.rejected("quantity must be > 0");
-        }
-        if (incoming.type() == OrderType.LIMIT && incoming.price() <= 0) {
-            return SubmissionResult.rejected("limit price must be > 0");
-        }
-
-        // Assign global sequence number for price-time priority
-        long incomingSeq = globalSequenceNumber++;
-
-        OrderBook book = bookFor(incoming.symbol());
-        int requestedDelta = incoming.side() == Side.BUY ? incoming.remainingQty() : -incoming.remainingQty();
-        int currentPosition = currentPositionForOwnerAndSymbol(incoming.owner(), incoming.symbol());
-        if (!riskManager.canAccept(currentPosition, requestedDelta)) {
-            return SubmissionResult.rejected(
-                "Risk reject for " + incoming.owner() + ": projected position would breach +/-" + riskManager.maxAbsolutePosition()
-            );
-        }
-
-        List<Trade> trades = new ArrayList<>();
-        while (!incoming.isFilled() && canCross(incoming, book)) {
-            Side restingSide = incoming.side().opposite();
-            Deque<Order> levelQueue = book.bestLevel(restingSide);
-            if (levelQueue == null || levelQueue.isEmpty()) {
-                break;
+        boolean measure = latencyRecorder.isEnabled();
+        long submissionStart = measure ? System.nanoTime() : 0;
+        try {
+            if (incoming == null) {
+                return SubmissionResult.rejected("incoming order is null");
+            }
+            if (incoming.symbol() == null || incoming.symbol().isBlank()) {
+                return SubmissionResult.rejected("symbol is required");
+            }
+            if (incoming.side() == null) {
+                return SubmissionResult.rejected("side is required");
+            }
+            if (incoming.type() == null) {
+                return SubmissionResult.rejected("order type is required");
+            }
+            if (incoming.remainingQty() <= 0) {
+                return SubmissionResult.rejected("quantity must be > 0");
+            }
+            if (incoming.type() == OrderType.LIMIT && incoming.price() <= 0) {
+                return SubmissionResult.rejected("limit price must be > 0");
             }
 
-            Order resting = levelQueue.peekFirst();
-            int tradeQty = Math.min(incoming.remainingQty(), resting.remainingQty());
-            long tradePrice = resting.price();
+            long bookLookupStart = measure ? System.nanoTime() : 0;
+            OrderBook book = bookFor(incoming.symbol());
+            if (measure) {
+                latencyRecorder.record(LatencyRecorder.Stage.BOOK_LOOKUP, System.nanoTime() - bookLookupStart);
+            }
 
-            incoming.reduce(tradeQty);
-            resting.reduce(tradeQty);
+            long riskStart = measure ? System.nanoTime() : 0;
+            int requestedDelta = incoming.side() == Side.BUY ? incoming.remainingQty() : -incoming.remainingQty();
+            int currentPosition = currentPositionForOwnerAndSymbol(incoming.owner(), incoming.symbol());
+            boolean riskAccepted = riskManager.canAccept(currentPosition, requestedDelta);
+            if (measure) {
+                latencyRecorder.record(LatencyRecorder.Stage.RISK_VALIDATION, System.nanoTime() - riskStart);
+            }
+            if (!riskAccepted) {
+                return SubmissionResult.rejected(
+                    "Risk reject for " + incoming.owner() + ": projected position would breach +/-" + riskManager.maxAbsolutePosition()
+                );
+            }
 
-            Trade trade = buildTrade(incoming, resting, tradePrice, tradeQty, System.nanoTime());
-            trades.add(trade);
-            applyPositionChanges(trade);
+            List<Trade> trades = new ArrayList<>();
+            long matchingStart = measure ? System.nanoTime() : 0;
+            while (!incoming.isFilled() && canCross(incoming, book)) {
+                Side restingSide = incoming.side().opposite();
+                Deque<Order> levelQueue = book.bestLevel(restingSide);
+                if (levelQueue == null || levelQueue.isEmpty()) {
+                    break;
+                }
 
-            if (resting.isFilled()) {
-                levelQueue.removeFirst();
-                book.removeBestLevelIfEmpty(restingSide);
+                Order resting = levelQueue.peekFirst();
+                int tradeQty = Math.min(incoming.remainingQty(), resting.remainingQty());
+                long tradePrice = resting.price();
+
+                incoming.reduce(tradeQty);
+                resting.reduce(tradeQty);
+
+                Trade trade = buildTrade(incoming, resting, tradePrice, tradeQty, System.nanoTime());
+                trades.add(trade);
+                applyPositionChanges(trade);
+
+                if (resting.isFilled()) {
+                    levelQueue.removeFirst();
+                    book.removeBestLevelIfEmpty(restingSide);
+                }
+            }
+            if (measure) {
+                latencyRecorder.record(LatencyRecorder.Stage.MATCHING, System.nanoTime() - matchingStart);
+            }
+
+            boolean restingAdded = false;
+            if (!incoming.isFilled() && incoming.type() == OrderType.LIMIT) {
+                incoming.setStatus(OrderStatus.RESTING);
+                book.addResting(incoming);
+                restingAdded = true;
+            }
+
+            return SubmissionResult.accepted(trades, restingAdded);
+        } finally {
+            if (measure) {
+                latencyRecorder.record(LatencyRecorder.Stage.ORDER_SUBMISSION, System.nanoTime() - submissionStart);
             }
         }
-
-        boolean restingAdded = false;
-        if (!incoming.isFilled() && incoming.type() == OrderType.LIMIT) {
-            incoming.setStatus(OrderStatus.RESTING);
-            book.addResting(incoming);
-            restingAdded = true;
-        }
-
-        return SubmissionResult.accepted(trades, restingAdded);
     }
 
     public int positionOf(String owner) {
@@ -230,10 +258,15 @@ public final class MatchingEngine {
     }
 
     private void applyPositionChanges(Trade trade) {
+        boolean measure = latencyRecorder.isEnabled();
+        long positionStart = measure ? System.nanoTime() : 0;
         updateOwnerPosition(trade.buyOwner(), trade.symbol(), trade.quantity());
         updateOwnerPosition(trade.sellOwner(), trade.symbol(), -trade.quantity());
         positions.merge(trade.buyOwner(), trade.quantity(), Integer::sum);
         positions.merge(trade.sellOwner(), -trade.quantity(), Integer::sum);
+        if (measure) {
+            latencyRecorder.record(LatencyRecorder.Stage.POSITION_UPDATE, System.nanoTime() - positionStart);
+        }
     }
 
     private void updateOwnerPosition(String owner, String symbol, int delta) {

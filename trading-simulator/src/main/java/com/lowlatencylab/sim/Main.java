@@ -1,5 +1,6 @@
 package com.lowlatencylab.sim;
 
+import com.lowlatencylab.sim.engine.LatencyRecorder;
 import com.lowlatencylab.sim.engine.MatchingEngine;
 import com.lowlatencylab.sim.engine.SubmissionResult;
 import com.lowlatencylab.sim.model.Order;
@@ -16,7 +17,8 @@ public final class Main {
 
     public static void main(String[] args) {
         AtomicLong idGen = new AtomicLong(0);
-        MatchingEngine engine = new MatchingEngine(new RiskManager(100));
+        LatencyRecorder latencyRecorder = LatencyRecorder.enabled();
+        MatchingEngine engine = new MatchingEngine(new RiskManager(100), latencyRecorder);
 
         System.out.println("=== STEP 1: Seed book with a simple market maker ===");
         NaiveMarketMakerStrategy mm = new NaiveMarketMakerStrategy("MM1", idGen);
@@ -177,6 +179,7 @@ public final class Main {
         System.out.println("TAKER_B=" + engine.positionOf("TAKER_B"));
         System.out.println("MULTI_BUY FOO=" + multiSymbolEngine.positionOf("MULTI_BUY", SYMBOL_FOO));
         System.out.println("MULTI_BUY BAR=" + multiSymbolEngine.positionOf("MULTI_BUY", SYMBOL_BAR));
+        System.out.println(latencyRecorder);
     }
 
     private static void printResult(String label, SubmissionResult result) {

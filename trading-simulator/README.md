@@ -29,6 +29,22 @@ mvn -q compile exec:java
 - Position tracking per owner and symbol
 - Basic risk manager (`max absolute position`)
 - Very simple market-making strategy example
+- Optional latency measurements in nanoseconds for submission, risk, book lookup, matching, and position updates
+
+## Latency Measurements
+
+Latency recording is disabled by default. Enable it by constructing the engine
+with `LatencyRecorder.enabled()`:
+
+```java
+LatencyRecorder recorder = LatencyRecorder.enabled();
+MatchingEngine engine = new MatchingEngine(new RiskManager(100), recorder);
+```
+
+The recorder reports sample count, minimum, average, median, p95, p99, and
+maximum latency. The demo application enables recording and prints the report
+at the end of its run. Use warm-up iterations and realistic workloads before
+using the measurements for performance decisions.
 
 ## Learning Map
 

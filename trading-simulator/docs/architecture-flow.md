@@ -122,5 +122,6 @@ checks prevent another participant from changing the order.
 - Per-symbol book state: `src/main/java/com/lowlatencylab/sim/book/OrderBook.java`
 - Trade records: `src/main/java/com/lowlatencylab/sim/model/Trade.java`
 - Submission outcomes: `src/main/java/com/lowlatencylab/sim/engine/SubmissionResult.java`
+- Latency recording: `src/main/java/com/lowlatencylab/sim/engine/LatencyRecorder.java`
 - Market-maker quotes: `src/main/java/com/lowlatencylab/sim/strategy/NaiveMarketMakerStrategy.java`
 - Automated behavior tests: `src/test/java/com/lowlatencylab/sim/engine/MatchingEngineTest.java`
